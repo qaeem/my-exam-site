@@ -1,0 +1,8 @@
+[build]
+  publish = "public"              # هذا هو المجلد الذي سيحتوي على HTML/CSS/JS
+  functions = "netlify/functions" # هنا نضع دوال (Serverless Functions)
+
+# تعريف نموذج Netlify Forms
+[[forms]]
+  name = "exam-registration"      # اسم النموذج الذي سنستخدمه في index.html
+  # لا حاجة لتعريف حقول هنا، Netlify سيكتشفها تلقائياً من صفحة HTML

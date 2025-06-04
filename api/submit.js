@@ -1,16 +1,18 @@
 // api/submit.js
 
-// 1) نُعطّل تحليل الجسم الافتراضي في Vercel
+// هذا يعرّف أنّ Vercel يجب أن لا يحلل الـ body أوتوماتيكيًا
 exports.config = {
   api: {
     bodyParser: false,
   },
 };
 
-const Busboy = require("busboy");
+const formidable = require("formidable");
+const fs = require("fs");
 const FormData = require("form-data");
 const fetch = require("node-fetch");
 
+// متغيّرات البيئة (أدرِجها في Vercel Settings → Environment Variables)
 const TELEGRAM_BOT_TOKEN = process.env.7896001866:AAEseDBzINmmyHYyR77qCcqds0Zh38x6GJs;
 const TELEGRAM_CHAT_ID = process.env.6067843686;
 
@@ -19,97 +21,84 @@ module.exports = async function handler(req, res) {
     return res.status(405).send("Method Not Allowed");
   }
 
-  // 2) التحقق من متغيّرات البيئة
+  // 1) التحقق من أن متغيّرات البيئة موجودة
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
     console.error("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID");
     return res.status(500).send("Server misconfiguration");
   }
 
-  // 3) تأكد أن Content-Type يبدأ بـ multipart/form-data
-  const contentType = req.headers["content-type"] || "";
-  if (!contentType.startsWith("multipart/form-data")) {
-    console.error("Bad Content-Type:", contentType);
-    return res.status(400).send("Bad Request: Expected multipart/form-data");
-  }
+  // 2) استخدام formidable لاستخراج الحقول والملف
+  const form = formidable({
+    multiples: false,
+    keepExtensions: true, // يحفظ الملفّ بامتداده الأصلي مؤقتًا
+    maxFileSize: 10 * 1024 * 1024, // أقصى حجم: 10 ميغابايت
+  });
 
-  // 4) فكّ الحقول والملف عبر Busboy
-  const busboy = new Busboy({ headers: req.headers });
-  let student = { name: "", telegram: "", grade: "" };
-  let fileBuffer = null;
-  let fileName = "";
-  let fileMime = "";
-
-  try {
-    await new Promise((resolve, reject) => {
-      busboy.on("file", (fieldname, file, filename, encoding, mimetype) => {
-        if (fieldname === "solution") {
-          fileName = filename;
-          fileMime = mimetype;
-          const chunks = [];
-          file.on("data", (data) => chunks.push(data));
-          file.on("end", () => {
-            fileBuffer = Buffer.concat(chunks);
-          });
-        } else {
-          file.resume();
-        }
-      });
-
-      busboy.on("field", (fieldname, val) => {
-        if (fieldname === "name") student.name = val;
-        else if (fieldname === "telegram") student.telegram = val;
-        else if (fieldname === "grade") student.grade = val;
-      });
-
-      busboy.on("finish", () => {
-        if (!fileBuffer) {
-          return reject(new Error("No file uploaded"));
-        }
-        resolve();
-      });
-
-      busboy.end(req.rawBody);
-    });
-  } catch (err) {
-    console.error("Busboy Error:", err);
-    return res.status(400).send("Error parsing form data");
-  }
-
-  // 5) إرسال البيانات والصورة إلى Telegram
-  try {
-    const form = new FormData();
-    form.append("chat_id", TELEGRAM_CHAT_ID);
-    const caption =
-      `📚 *اختبار أكاديمي بلس*\n\n` +
-      `*الاسم:* ${student.name}\n` +
-      `*تيليجرام:* ${student.telegram}\n` +
-      `*الصف:* ${student.grade}`;
-    form.append("caption", caption);
-    form.append("parse_mode", "Markdown");
-    form.append("photo", fileBuffer, {
-      filename: fileName,
-      contentType: fileMime,
-    });
-
-    const tgRes = await fetch(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
-      {
-        method: "POST",
-        headers: form.getHeaders(),
-        body: form,
-      }
-    );
-    const tgJson = await tgRes.json();
-    if (!tgJson.ok) {
-      console.error("Telegram API Error:", tgJson);
-      return res.status(500).send("Failed to send to Telegram");
+  form.parse(req, async (err, fields, files) => {
+    if (err) {
+      console.error("Formidable Error:", err);
+      return res.status(400).send("Error parsing form data");
     }
-  } catch (err) {
-    console.error("Telegram Send Error:", err);
-    return res.status(500).send("Error sending to Telegram");
-  }
 
-  // 6) عند النجاح، نعيد توجيه المستخدم إلى صفحة الشكر
-  res.writeHead(302, { Location: "/thankyou.html" });
-  res.end();
+    // 3) جلب الحقول
+    const name = fields.name || "";
+    const telegram = fields.telegram || "";
+    const grade = fields.grade || "";
+
+    // 4) جلب الملف المرفوع
+    const file = files.solution;
+    if (!file) {
+      return res.status(400).send("No file uploaded");
+    }
+
+    // 5) نقرأ الملف من المسار المؤقت (file.path) إلى Buffer
+    let fileBuffer;
+    try {
+      fileBuffer = fs.readFileSync(file.path);
+    } catch (readErr) {
+      console.error("Error reading uploaded file:", readErr);
+      return res.status(500).send("Error reading uploaded file");
+    }
+
+    // 6) بناء رسالة FormData لإرسالها إلى Telegram
+    try {
+      const tgForm = new FormData();
+      tgForm.append("chat_id", TELEGRAM_CHAT_ID);
+
+      const caption =
+        `📚 *اختبار أكاديمي بلس*\n\n` +
+        `*الاسم:* ${name}\n` +
+        `*تيليجرام:* ${telegram}\n` +
+        `*الصف:* ${grade}`;
+      tgForm.append("caption", caption);
+      tgForm.append("parse_mode", "Markdown");
+
+      // append photo: (Buffer, original filename, mime)
+      tgForm.append("photo", fileBuffer, {
+        filename: file.originalFilename || "solution.jpg",
+        contentType: file.mimetype,
+      });
+
+      const tgRes = await fetch(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`,
+        {
+          method: "POST",
+          headers: tgForm.getHeaders(),
+          body: tgForm,
+        }
+      );
+      const tgJson = await tgRes.json();
+      if (!tgJson.ok) {
+        console.error("Telegram API Error:", tgJson);
+        return res.status(500).send("Failed to send to Telegram");
+      }
+    } catch (tgErr) {
+      console.error("Error sending to Telegram:", tgErr);
+      return res.status(500).send("Error sending to Telegram");
+    }
+
+    // 7) إذا نجح كل شيء، نعيد توجيه المستخدم إلى صفحة الشكر
+    res.writeHead(302, { Location: "/thankyou.html" });
+    res.end();
+  });
 };

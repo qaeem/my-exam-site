@@ -11,8 +11,8 @@ import Busboy from "busboy";
 import FormData from "form-data";
 import fetch from "node-fetch";
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const TELEGRAM_BOT_TOKEN = process.env.7896001866:AAEseDBzINmmyHYyR77qCcqds0Zh38x6GJs;
+const TELEGRAM_CHAT_ID = process.env.6067843686;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {

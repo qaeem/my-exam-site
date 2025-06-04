@@ -1,6 +1,6 @@
 // api/submit.js
 
-// 1) نُعطّل تحليل الـ body الافتراضي في Vercel:
+// 1) نُعطّل تحليل الجسم الافتراضي في Vercel
 exports.config = {
   api: {
     bodyParser: false,
@@ -19,23 +19,25 @@ module.exports = async function handler(req, res) {
     return res.status(405).send("Method Not Allowed");
   }
 
-  // 2) التأكد من متغيّرات البيئة
+  // 2) التحقق من متغيّرات البيئة
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
     console.error("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID");
     return res.status(500).send("Server misconfiguration");
   }
 
-  // 3) التحقق من Content-Type
+  // 3) تأكد أن Content-Type يبدأ بـ multipart/form-data
   const contentType = req.headers["content-type"] || "";
   if (!contentType.startsWith("multipart/form-data")) {
     console.error("Bad Content-Type:", contentType);
     return res.status(400).send("Bad Request: Expected multipart/form-data");
   }
 
-  // 4) نستخدم Busboy لفكّ الحقول والملف
+  // 4) فكّ الحقول والملف عبر Busboy
   const busboy = new Busboy({ headers: req.headers });
   let student = { name: "", telegram: "", grade: "" };
-  let fileBuffer = null, fileName = "", fileMime = "";
+  let fileBuffer = null;
+  let fileName = "";
+  let fileMime = "";
 
   try {
     await new Promise((resolve, reject) => {
@@ -66,7 +68,6 @@ module.exports = async function handler(req, res) {
         resolve();
       });
 
-      // نوصل الجسم الخام لـ Busboy
       busboy.end(req.rawBody);
     });
   } catch (err) {

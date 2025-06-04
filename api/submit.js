@@ -1,38 +1,38 @@
 // api/submit.js
 
-// 1) نُعطّل تحليل جسم الطلب الإفتراضي في Vercel:
-export const config = {
+// 1) نُعطّل تحليل الـ body الافتراضي في Vercel:
+exports.config = {
   api: {
-    bodyParser: false
-  }
+    bodyParser: false,
+  },
 };
 
-import Busboy from "busboy";
-import FormData from "form-data";
-import fetch from "node-fetch";
+const Busboy = require("busboy");
+const FormData = require("form-data");
+const fetch = require("node-fetch");
 
 const TELEGRAM_BOT_TOKEN = process.env.7896001866:AAEseDBzINmmyHYyR77qCcqds0Zh38x6GJs;
 const TELEGRAM_CHAT_ID = process.env.6067843686;
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).send("Method Not Allowed");
   }
 
-  // تحقق من توفر متغيرات البيئة:
+  // 2) التأكد من متغيّرات البيئة
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
     console.error("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID");
     return res.status(500).send("Server misconfiguration");
   }
 
-  // تأكد أن Content-Type multipart/form-data
+  // 3) التحقق من Content-Type
   const contentType = req.headers["content-type"] || "";
   if (!contentType.startsWith("multipart/form-data")) {
     console.error("Bad Content-Type:", contentType);
     return res.status(400).send("Bad Request: Expected multipart/form-data");
   }
 
-  // ننشئ Busboy لقراءة الحقول والملف
+  // 4) نستخدم Busboy لفكّ الحقول والملف
   const busboy = new Busboy({ headers: req.headers });
   let student = { name: "", telegram: "", grade: "" };
   let fileBuffer = null, fileName = "", fileMime = "";
@@ -74,7 +74,7 @@ export default async function handler(req, res) {
     return res.status(400).send("Error parsing form data");
   }
 
-  // بعد فكّ الجسم، نرسل البيانات + الصورة إلى Telegram
+  // 5) إرسال البيانات والصورة إلى Telegram
   try {
     const form = new FormData();
     form.append("chat_id", TELEGRAM_CHAT_ID);
@@ -108,7 +108,7 @@ export default async function handler(req, res) {
     return res.status(500).send("Error sending to Telegram");
   }
 
-  // إذا نجحت كل الخطوات، نعيد توجيه المستخدم إلى صفحة الشكر
+  // 6) عند النجاح، نعيد توجيه المستخدم إلى صفحة الشكر
   res.writeHead(302, { Location: "/thankyou.html" });
   res.end();
-}
+};
